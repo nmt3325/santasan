@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Secrets & sessions
+cookies/
+accounts/account_configs.yaml
+
+# Logs
+logs/
+
+# Node
+generator_node/node_modules/
+generator_node/.env
+
+# Config with credentials
+config.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

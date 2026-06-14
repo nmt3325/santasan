@@ -1,0 +1,79 @@
+import asyncio
+import logging
+from datetime import datetime, timezone
+
+from twikit import Client
+
+logger = logging.getLogger(__name__)
+
+
+class TwikitActions:
+    def __init__(self, client: Client, account_name: str, dry_run: bool = False):
+        self.client = client
+        self.account_name = account_name
+        self.dry_run = dry_run
+
+    def _log(self, action: str, target_id: str, detail: str = ""):
+        ts = datetime.now(tz=timezone.utc).isoformat()
+        msg = f"[{ts}] [{self.account_name}] {action} | target={target_id}"
+        if detail:
+            msg += f" | {detail}"
+        if self.dry_run:
+            msg += " | DRY_RUN"
+        logger.info(msg)
+        return msg
+
+    async def follow(self, user_id: str) -> bool:
+        self._log("FOLLOW", user_id)
+        if self.dry_run:
+            return True
+        try:
+            await self.client.follow_user(user_id)
+            return True
+        except Exception as e:
+            logger.error("[%s] follow %s failed: %s", self.account_name, user_id, e)
+            return False
+
+    async def repost(self, tweet_id: str) -> bool:
+        self._log("REPOST", tweet_id)
+        if self.dry_run:
+            return True
+        try:
+            await self.client.retweet(tweet_id)
+            return True
+        except Exception as e:
+            logger.error("[%s] repost %s failed: %s", self.account_name, tweet_id, e)
+            return False
+
+    async def like(self, tweet_id: str) -> bool:
+        self._log("LIKE", tweet_id)
+        if self.dry_run:
+            return True
+        try:
+            await self.client.favorite_tweet(tweet_id)
+            return True
+        except Exception as e:
+            logger.error("[%s] like %s failed: %s", self.account_name, tweet_id, e)
+            return False
+
+    async def reply(self, tweet_id: str, text: str) -> bool:
+        self._log("REPLY", tweet_id, f"text={text!r}")
+        if self.dry_run:
+            return True
+        try:
+            await self.client.create_tweet(text=text, reply_to=tweet_id)
+            return True
+        except Exception as e:
+            logger.error("[%s] reply to %s failed: %s", self.account_name, tweet_id, e)
+            return False
+
+    async def tweet(self, text: str) -> bool:
+        self._log("TWEET", "—", f"text={text!r}")
+        if self.dry_run:
+            return True
+        try:
+            await self.client.create_tweet(text=text)
+            return True
+        except Exception as e:
+            logger.error("[%s] tweet failed: %s", self.account_name, e)
+            return False

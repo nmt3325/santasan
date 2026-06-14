@@ -1,0 +1,12 @@
+{
+  "name": "santasan-generator",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "@evex/rakutenai": "npm:@jsr/evex__rakutenai@^0.1.17",
+    "ai": "^6.0.204"
+  }
+}
