@@ -68,7 +68,8 @@ sudo apt-get install docker-buildx-plugin
 docker compose --profile login run --rm --service-ports login login account1
 ```
 
-別ターミナルから Mac で SSH tunnel を張ります。
+既定では host の `127.0.0.1:9222` だけに公開します。別ターミナルから
+Mac で SSH tunnel を張ります。
 
 ```bash
 ssh -N -L 9222:127.0.0.1:9222 user@alaska
@@ -77,6 +78,20 @@ ssh -N -L 9222:127.0.0.1:9222 user@alaska
 Mac Chrome の `chrome://inspect` で `localhost:9222` を追加し、
 表示された target を Inspect して `https://x.com/home` にログインします。
 ログインできたら `Ctrl-C` で login container を止めます。
+
+Tailscale IP に Mac から直接つなぐ場合は `.env` で以下を設定します。
+その場合は必ず firewall で `9222` を Tailscale interface のみに制限してください。
+
+```bash
+LOGIN_CDP_HOST=0.0.0.0
+```
+
+例:
+
+```bash
+sudo ufw allow in on tailscale0 to any port 9222 proto tcp
+sudo ufw deny 9222/tcp
+```
 
 ログイン生存確認:
 
@@ -93,6 +108,8 @@ docker compose run --rm santasan run
 profile は Docker volume `santasan-stack_chrome_profiles` の
 `/data/chrome/<account>` に保存されます。アカウント追加時は `.env` の
 `ACCOUNTS` に追加し、そのアカウントで login を 1 回実行してください。
+`accounts/account_configs.yaml` の `relay_profile` は書かないか、全アカウント
+`active` にしてください。
 
 ### 1. Python 環境
 

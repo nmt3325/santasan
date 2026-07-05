@@ -179,12 +179,15 @@ async def run_sweepstakes_entry(
         session.name, tweet["id"], req.follow, req.repost, req.like, req.reply,
     )
 
+    acted = False
+
     if req.follow and tracker.can_follow() and tracker.can_act():
         user_id = tweet.get("user_id", "")
         if user_id:
             ok = await run_with_backoff(lambda: actor.follow(user_id), tracker)
             if ok:
                 tracker.record_action("follow")
+                acted = True
             await jitter_delay(RateLimitConfig.from_dict(cfg))
 
     if req.repost and global_tracker.can_repost() and tracker.can_act():
@@ -192,6 +195,7 @@ async def run_sweepstakes_entry(
         if ok:
             tracker.record_action("repost")
             global_tracker.record_repost()
+            acted = True
         await jitter_delay(RateLimitConfig.from_dict(cfg))
 
     if req.like and global_tracker.can_like() and tracker.can_act():
@@ -199,6 +203,7 @@ async def run_sweepstakes_entry(
         if ok:
             tracker.record_action("like")
             global_tracker.record_like()
+            acted = True
         await jitter_delay(RateLimitConfig.from_dict(cfg))
 
     if req.reply and global_tracker.can_reply() and tracker.can_act():
@@ -212,7 +217,17 @@ async def run_sweepstakes_entry(
         if ok:
             tracker.record_action("reply")
             global_tracker.record_reply()
+            acted = True
         await jitter_delay(RateLimitConfig.from_dict(cfg))
+
+    if acted:
+        marker = (
+            f"[{datetime.now(tz=timezone.utc).isoformat()}] "
+            f"[{session.name}] ENTERED | target={tweet['id']}"
+        )
+        if dry_run:
+            marker += " | DRY_RUN"
+        logging.info(marker)
 
 
 async def post_organic_tweets(

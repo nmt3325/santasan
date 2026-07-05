@@ -3,6 +3,7 @@ set -uo pipefail
 
 PROFILES_DIR="${PROFILES_DIR:-/data/chrome}"
 CDP_PORT="${CDP_PORT:-9222}"
+CDP_BIND="${CDP_BIND:-127.0.0.1}"
 RELAY_PORT="${RELAY_PORT:-3000}"
 ACCOUNTS="${ACCOUNTS:-account1}"
 RELAY_START="${RELAY_START:-pnpm start:relay}"
@@ -40,7 +41,7 @@ start_chrome() {
     --headless=new \
     --no-sandbox \
     --password-store=basic \
-    --remote-debugging-address=127.0.0.1 \
+    --remote-debugging-address="$CDP_BIND" \
     --remote-debugging-port="$CDP_PORT" \
     --user-data-dir="$dir" \
     --no-first-run \
