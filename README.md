@@ -65,11 +65,12 @@ sudo apt-get install docker-buildx-plugin
 初回ログインはアカウントごとに実行します。
 
 ```bash
-docker compose --profile login run --rm --service-ports login login account1
+docker compose --profile login run --rm login login account1
 ```
 
-既定では host の `127.0.0.1:9222` だけに公開します。別ターミナルから
-Mac で SSH tunnel を張ります。
+`login` service は Linux host network で起動し、Alaska host の `9222` で
+CDP を待ち受けます。SSH tunnel を使う場合は、別ターミナルから Mac で
+tunnel を張ります。
 
 ```bash
 ssh -N -L 9222:127.0.0.1:9222 user@alaska
@@ -79,14 +80,8 @@ Mac Chrome の `chrome://inspect` で `localhost:9222` を追加し、
 表示された target を Inspect して `https://x.com/home` にログインします。
 ログインできたら `Ctrl-C` で login container を止めます。
 
-Tailscale IP に Mac から直接つなぐ場合は `.env` で以下を設定します。
-その場合は必ず firewall で `9222` を Tailscale interface のみに制限してください。
-
-```bash
-LOGIN_CDP_HOST=0.0.0.0
-```
-
-例:
+Tailscale IP に Mac から直接つなぐ場合は、必ず firewall で `9222` を
+Tailscale interface のみに制限してください。
 
 ```bash
 sudo ufw allow in on tailscale0 to any port 9222 proto tcp

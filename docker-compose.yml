@@ -33,6 +33,7 @@ services:
       args:
         RELAY_REPO: https://github.com/fa0311/twitter_api_safe_relay.git
         RELAY_REF: main
+    network_mode: host
     environment:
       ACCOUNTS: ${ACCOUNTS:-account1,account2,account3}
       CDP_PORT: ${CDP_PORT:-9222}
@@ -46,8 +47,6 @@ services:
       RUN_ONCE: ${RUN_ONCE:---once}
     volumes:
       - chrome_profiles:/data/chrome
-    ports:
-      - "${LOGIN_CDP_HOST:-127.0.0.1}:${CDP_PORT:-9222}:${CDP_PORT:-9222}"
     shm_size: "2gb"
     command: ["login", "account1"]
     profiles:
