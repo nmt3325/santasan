@@ -77,6 +77,23 @@ stop_chrome() {
 }
 
 start_relay() {
+  cat > /app/relay/settings.json <<EOF
+{
+  "port": $RELAY_PORT,
+  "logLevel": "info",
+  "profiles": [
+    {
+      "name": "active",
+      "browser": {
+        "type": "cdp",
+        "browserType": "chromium",
+        "cdpEndpoint": "http://127.0.0.1:$CDP_PORT"
+      }
+    }
+  ]
+}
+EOF
+
   log "[relay] starting"
   ( cd /app/relay && eval "$RELAY_START" ) >/tmp/santasan-relay.log 2>&1 &
   RELAY_PID=$!
@@ -95,10 +112,13 @@ start_relay() {
 }
 
 stop_relay() {
-  [ -n "$RELAY_PID" ] || return 0
-  log "[relay] stopping pid=$RELAY_PID"
-  kill "$RELAY_PID" 2>/dev/null || true
-  wait "$RELAY_PID" 2>/dev/null || true
+  if [ -n "$RELAY_PID" ]; then
+    log "[relay] stopping pid=$RELAY_PID"
+    kill "$RELAY_PID" 2>/dev/null || true
+    wait "$RELAY_PID" 2>/dev/null || true
+  fi
+  pkill -f "/app/relay/packages/server/dist/server.js" 2>/dev/null || true
+  pkill -f "node dist/server.js" 2>/dev/null || true
   RELAY_PID=""
 }
 
