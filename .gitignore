@@ -18,6 +18,7 @@ logs/
 # Node
 generator_node/node_modules/
 generator_node/.env
+.env
 
 # Config with credentials
 config.yaml

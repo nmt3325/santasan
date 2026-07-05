@@ -182,6 +182,18 @@ class SafeRelayClient:
     async def profiles(self) -> dict[str, Any]:
         return await self._request("GET", "/profiles")
 
+    async def current_user(self) -> dict[str, Any]:
+        return await self._request("GET", "/2/users/me")
+
+    async def assert_login_alive(self) -> dict[str, Any]:
+        try:
+            return await self.current_user()
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Safe Relay profile '{self.profile_name}' is not logged in or "
+                f"cannot use X Web API. Re-login the active Chrome profile. {e}"
+            ) from e
+
     async def follow_user(self, user_id: str) -> dict[str, Any]:
         data = dict(FOLLOW_DATA_DEFAULTS)
         data["user_id"] = user_id
@@ -267,3 +279,30 @@ def create_client_from_env(profile_name: str | None = None) -> SafeRelayClient:
         api_key=os.environ.get("RELAY_API_KEY"),
         timeout=timeout,
     )
+
+
+async def check_cdp_version(cdp_url: str | None = None, timeout: float = 5.0) -> dict[str, Any]:
+    """Check a Chrome DevTools Protocol endpoint if one is configured."""
+    selected_url = (
+        cdp_url
+        or os.environ.get("CDP_VERSION_URL")
+        or os.environ.get("CDP_ENDPOINT_URL")
+        or os.environ.get("CDP_ENDPOINT")
+        or os.environ.get("CHROME_CDP_URL")
+        or ""
+    ).strip()
+    if not selected_url:
+        raise RuntimeError(
+            "CDP endpoint is not configured. Set CDP_ENDPOINT_URL=http://127.0.0.1:9222"
+        )
+
+    selected_url = selected_url.rstrip("/")
+    version_url = (
+        selected_url
+        if selected_url.endswith("/json/version")
+        else f"{selected_url}/json/version"
+    )
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
+        response = await client.get(version_url)
+        response.raise_for_status()
+        return response.json()

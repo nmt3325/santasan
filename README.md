@@ -42,6 +42,58 @@ santasan/
 
 ## セットアップ
 
+### Docker Compose（推奨: Debian headless）
+
+`twitter_api_safe_relay`、Chromium、santasan を 1 コンテナにまとめた
+all-in-one 構成を用意しています。1つの CDP port `9222` を使い、
+アカウントごとに Chrome profile を停止・起動で差し替えます。
+
+```bash
+cp .env.example .env
+vim .env  # ACCOUNTS=account1,account2,account3 を調整
+docker compose build
+```
+
+`docker compose build` で buildx plugin を求められる場合は、Debian 側で
+`docker-buildx-plugin` を入れてください。
+
+```bash
+sudo apt-get update
+sudo apt-get install docker-buildx-plugin
+```
+
+初回ログインはアカウントごとに実行します。
+
+```bash
+docker compose --profile login run --rm --service-ports login login account1
+```
+
+別ターミナルから Mac で SSH tunnel を張ります。
+
+```bash
+ssh -N -L 9222:127.0.0.1:9222 user@alaska
+```
+
+Mac Chrome の `chrome://inspect` で `localhost:9222` を追加し、
+表示された target を Inspect して `https://x.com/home` にログインします。
+ログインできたら `Ctrl-C` で login container を止めます。
+
+ログイン生存確認:
+
+```bash
+docker compose run --rm santasan verify account1
+```
+
+全アカウントを直列実行:
+
+```bash
+docker compose run --rm santasan run
+```
+
+profile は Docker volume `santasan-stack_chrome_profiles` の
+`/data/chrome/<account>` に保存されます。アカウント追加時は `.env` の
+`ACCOUNTS` に追加し、そのアカウントで login を 1 回実行してください。
+
 ### 1. Python 環境
 
 ```bash

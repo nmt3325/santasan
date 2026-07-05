@@ -1,0 +1,56 @@
+name: santasan-stack
+
+services:
+  santasan:
+    build:
+      context: .
+      args:
+        RELAY_REPO: https://github.com/fa0311/twitter_api_safe_relay.git
+        RELAY_REF: main
+    environment:
+      ACCOUNTS: ${ACCOUNTS:-account1,account2,account3}
+      CDP_PORT: ${CDP_PORT:-9222}
+      RELAY_PORT: ${RELAY_PORT:-3000}
+      PROFILES_DIR: ${PROFILES_DIR:-/data/chrome}
+      RELAY_START: ${RELAY_START:-pnpm start:relay}
+      USE_SAFE_RELAY: ${USE_SAFE_RELAY:-true}
+      RELAY_PROFILE_NAME: ${RELAY_PROFILE_NAME:-active}
+      CONFIG_PATH: ${CONFIG_PATH:-config.yaml}
+      RUN_ONCE: ${RUN_ONCE:---once}
+    volumes:
+      - chrome_profiles:/data/chrome
+      - ./config.yaml:/app/santasan/config.yaml:ro
+      - ./accounts:/app/santasan/accounts:ro
+      - ./logs:/app/santasan/logs
+    shm_size: "2gb"
+    command: ["run"]
+    restart: "no"
+
+  login:
+    build:
+      context: .
+      args:
+        RELAY_REPO: https://github.com/fa0311/twitter_api_safe_relay.git
+        RELAY_REF: main
+    environment:
+      ACCOUNTS: ${ACCOUNTS:-account1,account2,account3}
+      CDP_PORT: ${CDP_PORT:-9222}
+      RELAY_PORT: ${RELAY_PORT:-3000}
+      PROFILES_DIR: ${PROFILES_DIR:-/data/chrome}
+      RELAY_START: ${RELAY_START:-pnpm start:relay}
+      USE_SAFE_RELAY: ${USE_SAFE_RELAY:-true}
+      RELAY_PROFILE_NAME: ${RELAY_PROFILE_NAME:-active}
+      CONFIG_PATH: ${CONFIG_PATH:-config.yaml}
+      RUN_ONCE: ${RUN_ONCE:---once}
+    volumes:
+      - chrome_profiles:/data/chrome
+    ports:
+      - "127.0.0.1:9222:9222"
+    shm_size: "2gb"
+    command: ["login", "account1"]
+    profiles:
+      - login
+    restart: "no"
+
+volumes:
+  chrome_profiles: {}

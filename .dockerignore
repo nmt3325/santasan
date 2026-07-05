@@ -1,0 +1,15 @@
+.git
+.venv
+__pycache__
+*.pyc
+.DS_Store
+logs/*
+!logs/.gitkeep
+generator_node/node_modules
+relay
+chrome_profiles
+data
+.env
+config.yaml
+accounts/
+cookies/

@@ -6,6 +6,12 @@ twikit has become unstable for X write actions. The preferred implementation
 path is to replace the twikit runtime path with
 `fa0311/twitter_api_safe_relay` plus a santasan-specific adapter.
 
+For Debian/headless production, prefer the all-in-one Docker Compose stack in
+the repository root. It builds Chromium, `twitter_api_safe_relay`, santasan, and
+the account-switching entrypoint into one image. The container runs one Chrome
+process at a time on `127.0.0.1:9222`, relay connects to that CDP endpoint with
+profile `active`, and santasan is invoked as `src/main.py --account <name>`.
+
 Important: `twitter_api_safe_relay` is not a high-level Twitter client. It does
 not expose `/follow`, `/like`, `/retweet`, or `/tweet`. It exposes proxy routes
 for the X Web App API:
@@ -34,11 +40,14 @@ this header in santasan; otherwise the relay may choose a random profile.
 2. Classify posts to detect required actions: follow, repost/retweet, like,
    reply, and required hashtags.
 3. Preserve multi-account support.
-4. In Safe Relay mode, map each santasan account to a relay profile with the
-   same name.
-5. Each account must use a fully separate browser session/profile in the relay.
-   Use a separate `userDataDir` per account in `launch` mode, or separate
-   browser processes/CDP endpoints per account in `cdp` mode.
+4. In the preferred Debian/headless Safe Relay mode, run one relay profile named
+   `active` against one local CDP endpoint (`127.0.0.1:9222`). An external
+   orchestrator switches accounts by stopping Chrome, starting Chrome with that
+   account's dedicated `--user-data-dir`, restarting relay, and running
+   `src/main.py --account <name>`.
+5. Each account must use a fully separate browser user-data-dir. Do not run two
+   Chrome processes against the same user-data-dir. In active-profile mode,
+   relay profile sharing is intentional; browser profile sharing is not.
 6. Auto-perform required entry actions with the selected account only.
 7. Use rakutenai to generate context-aware Japanese replies and organic posts.
 8. Each account should post 2-5 organic tweets per day.
@@ -80,8 +89,10 @@ The account relationship should not be created by santasan through shared local
 state. For the parts this project controls:
 
 - Do not share cookie files, browser profile directories, local storage, or
-  relay profile names across accounts.
-- Do not use one relay profile for multiple santasan accounts.
+  Chrome user-data-dir across accounts.
+- In the active-profile orchestration mode, multiple santasan accounts all use
+  relay profile `active`, but only one account is processed at a time and the
+  backing Chrome user-data-dir is swapped by the orchestrator.
 - Do not let Safe Relay mode fall back to random relay profile selection.
 - Keep per-account rate tracking.
 - Keep per-account action logging.
@@ -139,9 +150,10 @@ project/
 5. Ensure `main.py` passes the selected account/profile name into the relay
    adapter for every action.
 6. Verify relay connectivity with `GET /health` and `GET /profiles`.
-7. Smoke-test `like`, `repost`, `tweet`, and `reply` with a controlled account.
-8. Validate `follow` separately.
-9. Only after Safe Relay mode is stable, consider removing twikit from the
+7. Verify login liveness with `GET /2/users/me` before any real write action.
+8. Smoke-test `like`, `repost`, `tweet`, and `reply` with a controlled account.
+9. Validate `follow` separately.
+10. Only after Safe Relay mode is stable, consider removing twikit from the
    production runtime path.
 
 ## Constraints
@@ -151,6 +163,8 @@ project/
 - In Safe Relay mode, login state lives in relay-managed browser profiles, not
   santasan cookie files.
 - Every action must be logged to `logs/actions.log`.
+- Dry-run action logs must not cause production de-duplication skips. Keep
+  dry-run logs separate or ignore `DRY_RUN` lines in production checks.
 - If a post is older than 24 hours, skip it.
 - Skip posts that have already been interacted with.
 - Prefer documented upstream behavior from DeepWiki or source inspection before

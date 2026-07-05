@@ -14,6 +14,7 @@ Usage:
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -22,7 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from urllib.parse import unquote
 
-from safe_relay import create_client_from_env
+from safe_relay import check_cdp_version, create_client_from_env
 from account_manager import load_accounts, _parse_netscape_cookies
 from classify import classify
 from generator import generate_organic_tweet, generate_reply
@@ -41,9 +42,23 @@ def fail(msg: str) -> None:
 
 async def check_accounts() -> bool:
     if is_safe_relay_mode():
-        print("\n[1/4] Safe Relay profiles (read-only)")
+        print("\n[1/4] Safe Relay login/session (read-only)")
         sessions = await load_accounts(safe_relay=True)
         all_ok = True
+        has_cdp_env = any(
+            os.environ.get(k)
+            for k in ("CDP_VERSION_URL", "CDP_ENDPOINT_URL", "CDP_ENDPOINT", "CHROME_CDP_URL")
+        )
+        if has_cdp_env:
+            try:
+                cdp = await check_cdp_version()
+                ok(f"CDP endpoint reachable: {cdp.get('Browser', 'unknown browser')}")
+            except Exception as e:
+                fail(f"CDP check FAILED — {type(e).__name__}: {e}")
+                all_ok = False
+        else:
+            ok("CDP endpoint check skipped (set CDP_ENDPOINT_URL to enable)")
+
         for s in sessions:
             profile = s.relay_profile or s.name
             try:
@@ -57,6 +72,13 @@ async def check_accounts() -> bool:
                 else:
                     fail(f"{s.name}: relay profile '{profile}' missing; available={profiles}")
                     all_ok = False
+                    continue
+
+                user = await client.assert_login_alive()
+                data = user.get("data", user)
+                username = data.get("username") or data.get("screen_name") or data.get("name")
+                user_id = data.get("id") or data.get("id_str")
+                ok(f"{s.name}: X login alive as @{username or 'unknown'} (id={user_id or 'unknown'})")
             except Exception as e:
                 fail(f"{s.name}: relay check FAILED — {type(e).__name__}: {e}")
                 all_ok = False

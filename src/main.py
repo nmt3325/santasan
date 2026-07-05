@@ -59,12 +59,29 @@ def load_config(path: str = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
+def action_log_file(cfg: dict, dry_run: bool) -> str:
+    log_file = cfg.get("log_file", "logs/actions.log")
+    if not dry_run:
+        return log_file
+    if cfg.get("dry_run_log_file"):
+        return cfg["dry_run_log_file"]
+
+    path = Path(log_file)
+    suffix = path.suffix or ".log"
+    stem = path.stem if path.suffix else path.name
+    return str(path.with_name(f"{stem}.dryrun{suffix}"))
+
+
 def already_interacted(tweet_id: str, log_file: Path) -> bool:
     if not log_file.exists():
         return False
     try:
-        content = log_file.read_text(encoding="utf-8")
-        return f"target={tweet_id}" in content
+        for line in log_file.read_text(encoding="utf-8").splitlines():
+            if "DRY_RUN" in line:
+                continue
+            if f"target={tweet_id}" in line:
+                return True
+        return False
     except OSError:
         return False
 
@@ -103,6 +120,35 @@ async def verify_safe_relay_profiles(sessions: list[AccountSession]) -> None:
             f"{missing}. Available profiles: {sorted(available)}"
         )
     logging.info("Safe Relay profiles verified: %s", sorted(required))
+
+
+async def verify_safe_relay_login(session: AccountSession) -> None:
+    profile = session.relay_profile or session.name
+    client = create_client_from_env(profile)
+    user = await client.assert_login_alive()
+    data = user.get("data", user)
+    username = data.get("username") or data.get("screen_name") or data.get("name") or "unknown"
+    user_id = data.get("id") or data.get("id_str") or "unknown"
+    logging.info(
+        "[%s] Safe Relay login verified via profile '%s': @%s id=%s",
+        session.name,
+        profile,
+        username,
+        user_id,
+    )
+
+
+def select_account_sessions(
+    sessions: list[AccountSession],
+    account_name: str | None,
+) -> list[AccountSession]:
+    if not account_name:
+        return sessions
+    selected = [s for s in sessions if s.name == account_name]
+    if not selected:
+        available = [s.name for s in sessions]
+        raise RuntimeError(f"Account '{account_name}' not found. Available accounts: {available}")
+    return selected
 
 
 async def run_sweepstakes_entry(
@@ -199,8 +245,13 @@ async def post_organic_tweets(
             await jitter_delay(rl_cfg)
 
 
-async def main_loop(cfg: dict, dry_run: bool, run_once: bool = False) -> None:
-    log_path = PROJECT_ROOT / cfg.get("log_file", "logs/actions.log")
+async def main_loop(
+    cfg: dict,
+    dry_run: bool,
+    run_once: bool = False,
+    account_name: str | None = None,
+) -> None:
+    log_path = PROJECT_ROOT / action_log_file(cfg, dry_run)
     keywords: list[str] = cfg.get("keywords", [])
     search_cfg = cfg.get("search", {})
     results_per_query = search_cfg.get("results_per_query", 40)
@@ -208,9 +259,21 @@ async def main_loop(cfg: dict, dry_run: bool, run_once: bool = False) -> None:
     rl_cfg = RateLimitConfig.from_dict(cfg)
 
     safe_relay = is_safe_relay_mode()
-    sessions = await load_accounts(safe_relay=safe_relay)
+    sessions = select_account_sessions(
+        await load_accounts(safe_relay=safe_relay),
+        account_name,
+    )
     if safe_relay and not dry_run:
         await verify_safe_relay_profiles(sessions)
+        if len(sessions) != 1:
+            shared_profiles = {s.relay_profile or s.name for s in sessions}
+            if len(shared_profiles) == 1:
+                raise RuntimeError(
+                    "Safe Relay active-profile mode requires --account. "
+                    f"Loaded accounts={ [s.name for s in sessions] }, profile={shared_profiles.pop()!r}"
+                )
+        for session in sessions:
+            await verify_safe_relay_login(session)
     global_tracker = GlobalRateTracker(rl_cfg)
     account_trackers = {
         s.name: AccountRateTracker(s.name, s.is_new, rl_cfg)
@@ -264,12 +327,13 @@ async def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Simulate actions without executing")
     parser.add_argument("--discover", action="store_true", help="Fetch and print tweets, then exit")
     parser.add_argument("--once", action="store_true", help="Run one cycle, then exit")
+    parser.add_argument("--account", help="Run a single configured account by name")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     dry_run = args.dry_run or cfg.get("dry_run", False)
-    setup_logging(cfg.get("log_file", "logs/actions.log"), dry_run)
+    setup_logging(action_log_file(cfg, dry_run), dry_run)
 
     if args.discover:
         keywords = cfg.get("keywords", [])
@@ -288,7 +352,7 @@ async def main() -> None:
     if dry_run:
         logging.info("DRY-RUN MODE: no real actions will be performed")
 
-    await main_loop(cfg, dry_run, run_once=args.once)
+    await main_loop(cfg, dry_run, run_once=args.once, account_name=args.account)
 
 
 if __name__ == "__main__":

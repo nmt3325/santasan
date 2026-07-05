@@ -170,7 +170,12 @@ async def load_accounts(
         is_new = acc.get("is_new", False)
 
         if safe_relay:
-            relay_profile = acc.get("relay_profile", name)
+            relay_profile = (
+                acc.get("relay_profile")
+                or os.environ.get("RELAY_PROFILE_NAME")
+                or os.environ.get("RELAY_ACCOUNT_ID")
+                or name
+            )
             sessions.append(
                 AccountSession(
                     name=name,

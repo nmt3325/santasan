@@ -93,7 +93,10 @@ class SafeRelayActions(ActionsBase):
         client: SafeRelayClient | None = None,
     ):
         profile_name = relay_profile or account_name
-        super().__init__(client or create_client_from_env(profile_name), account_name, dry_run)
+        relay_client = client
+        if relay_client is None and not dry_run:
+            relay_client = create_client_from_env(profile_name)
+        super().__init__(relay_client, account_name, dry_run)
 
 
 def create_actions(
