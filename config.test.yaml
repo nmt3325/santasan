@@ -1,0 +1,32 @@
+dry_run: true
+log_file: logs/actions.log
+
+keywords:
+  - "フォロー リポスト 懸賞"
+
+search:
+  results_per_query: 5
+  max_age_hours: 24
+
+rate_limits:
+  actions_per_hour: 999
+  new_account_actions_per_hour: 999
+  follows_per_hour: 999
+  follows_per_day: 999
+  likes_per_day_total: 999
+  reposts_per_day_total: 999
+  replies_per_day_total: 999
+  organic_tweets_per_day_min: 0
+  organic_tweets_per_day_max: 0
+  min_delay_seconds: 0
+  max_delay_seconds: 0
+  active_window_hours: 14
+
+backoff:
+  base_seconds: 1
+  max_seconds: 2
+  multiplier: 2
+
+generator:
+  node_script: generator_node/generate.mjs
+  timeout_seconds: 30

@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from account_manager import load_accounts, AccountSession
-from actions import TwikitActions
+from actions import create_safe_relay_actions, TwikitActions
 from classify import classify
 from generator import generate_organic_tweet, generate_reply
 from scheduler import (
@@ -34,6 +34,7 @@ from scheduler import (
     run_with_backoff,
 )
 from search import discover, fetch_tweets
+from safe_relay import create_client_from_env
 
 
 def setup_logging(log_file: str, dry_run: bool) -> None:
@@ -68,6 +69,42 @@ def already_interacted(tweet_id: str, log_file: Path) -> bool:
         return False
 
 
+def is_safe_relay_mode() -> bool:
+    return (
+        os.environ.get("USE_SAFE_RELAY", "").lower() == "true"
+        or bool(os.environ.get("RELAY_SERVER_URL"))
+    )
+
+
+def get_actions(session: AccountSession, dry_run: bool):
+    """Get the appropriate actions handler based on configuration."""
+    if is_safe_relay_mode():
+        return create_safe_relay_actions(
+            session.name,
+            dry_run=dry_run,
+            relay_profile=session.relay_profile or session.name,
+        )
+    return TwikitActions(session.client, session.name, dry_run=dry_run)
+
+
+async def verify_safe_relay_profiles(sessions: list[AccountSession]) -> None:
+    if not sessions:
+        return
+
+    first_profile = sessions[0].relay_profile or sessions[0].name
+    client = create_client_from_env(first_profile)
+    profiles_resp = await client.profiles()
+    available = set(profiles_resp.get("profiles", []))
+    required = {s.relay_profile or s.name for s in sessions}
+    missing = sorted(required - available)
+    if missing:
+        raise RuntimeError(
+            "Safe Relay profiles missing: "
+            f"{missing}. Available profiles: {sorted(available)}"
+        )
+    logging.info("Safe Relay profiles verified: %s", sorted(required))
+
+
 async def run_sweepstakes_entry(
     tweet: dict,
     session: AccountSession,
@@ -86,7 +123,7 @@ async def run_sweepstakes_entry(
         logging.debug("Tweet %s not classified as sweepstakes — skipping", tweet["id"])
         return
 
-    actor = TwikitActions(session.client, session.name, dry_run=dry_run)
+    actor = get_actions(session, dry_run)
     gen_cfg = cfg.get("generator", {})
     node_script = gen_cfg.get("node_script", "generator_node/generate.mjs")
     gen_timeout = float(gen_cfg.get("timeout_seconds", 30))
@@ -147,7 +184,7 @@ async def post_organic_tweets(
     node_script = gen_cfg.get("node_script", "generator_node/generate.mjs")
     gen_timeout = float(gen_cfg.get("timeout_seconds", 30))
 
-    actor = TwikitActions(session.client, session.name, dry_run=dry_run)
+    actor = get_actions(session, dry_run)
     rl_cfg = RateLimitConfig.from_dict(cfg)
 
     for i in range(count):
@@ -162,7 +199,7 @@ async def post_organic_tweets(
             await jitter_delay(rl_cfg)
 
 
-async def main_loop(cfg: dict, dry_run: bool) -> None:
+async def main_loop(cfg: dict, dry_run: bool, run_once: bool = False) -> None:
     log_path = PROJECT_ROOT / cfg.get("log_file", "logs/actions.log")
     keywords: list[str] = cfg.get("keywords", [])
     search_cfg = cfg.get("search", {})
@@ -170,14 +207,22 @@ async def main_loop(cfg: dict, dry_run: bool) -> None:
     max_age_hours = search_cfg.get("max_age_hours", 24)
     rl_cfg = RateLimitConfig.from_dict(cfg)
 
-    sessions = await load_accounts()
+    safe_relay = is_safe_relay_mode()
+    sessions = await load_accounts(safe_relay=safe_relay)
+    if safe_relay and not dry_run:
+        await verify_safe_relay_profiles(sessions)
     global_tracker = GlobalRateTracker(rl_cfg)
     account_trackers = {
         s.name: AccountRateTracker(s.name, s.is_new, rl_cfg)
         for s in sessions
     }
 
-    logging.info("Starting santasan | accounts=%s dry_run=%s", [s.name for s in sessions], dry_run)
+    logging.info(
+        "Starting santasan | accounts=%s mode=%s dry_run=%s",
+        [s.name for s in sessions],
+        "safe_relay" if safe_relay else "twikit",
+        dry_run,
+    )
 
     while True:
         all_tweets: list[dict] = []
@@ -206,6 +251,10 @@ async def main_loop(cfg: dict, dry_run: bool) -> None:
                 continue
             await run_sweepstakes_entry(tweet, session, tracker, global_tracker, cfg, dry_run, log_path)
 
+        if run_once:
+            logging.info("Cycle complete. --once set, exiting.")
+            return
+
         logging.info("Cycle complete. Sleeping 30 minutes before next search...")
         await asyncio.sleep(1800)
 
@@ -214,6 +263,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="santasan — automated sweepstakes entry tool")
     parser.add_argument("--dry-run", action="store_true", help="Simulate actions without executing")
     parser.add_argument("--discover", action="store_true", help="Fetch and print tweets, then exit")
+    parser.add_argument("--once", action="store_true", help="Run one cycle, then exit")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     args = parser.parse_args()
 
@@ -238,7 +288,7 @@ async def main() -> None:
     if dry_run:
         logging.info("DRY-RUN MODE: no real actions will be performed")
 
-    await main_loop(cfg, dry_run)
+    await main_loop(cfg, dry_run, run_once=args.once)
 
 
 if __name__ == "__main__":

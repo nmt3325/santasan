@@ -22,11 +22,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from urllib.parse import unquote
 
+from safe_relay import create_client_from_env
 from account_manager import load_accounts, _parse_netscape_cookies
 from classify import classify
 from generator import generate_organic_tweet, generate_reply
 from search import fetch_tweets
 from main import load_config
+from main import is_safe_relay_mode
 
 
 def ok(msg: str) -> None:
@@ -38,8 +40,30 @@ def fail(msg: str) -> None:
 
 
 async def check_accounts() -> bool:
+    if is_safe_relay_mode():
+        print("\n[1/4] Safe Relay profiles (read-only)")
+        sessions = await load_accounts(safe_relay=True)
+        all_ok = True
+        for s in sessions:
+            profile = s.relay_profile or s.name
+            try:
+                client = create_client_from_env(profile)
+                health = await client.health()
+                profiles_resp = await client.profiles()
+                profiles = profiles_resp.get("profiles", [])
+                if profile in profiles:
+                    ok(f"{s.name}: relay profile '{profile}' available "
+                       f"(health={health.get('status')})")
+                else:
+                    fail(f"{s.name}: relay profile '{profile}' missing; available={profiles}")
+                    all_ok = False
+            except Exception as e:
+                fail(f"{s.name}: relay check FAILED — {type(e).__name__}: {e}")
+                all_ok = False
+        return all_ok
+
     print("\n[1/4] Account authentication (read-only)")
-    sessions = await load_accounts()
+    sessions = await load_accounts(safe_relay=False)
     all_ok = True
     for s in sessions:
         # Derive own user-id from the twid cookie (u%3D<id>), then do a

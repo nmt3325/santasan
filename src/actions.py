@@ -1,19 +1,21 @@
-import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
-from twikit import Client
+from safe_relay import SafeRelayClient, create_client_from_env
 
 logger = logging.getLogger(__name__)
 
 
-class TwikitActions:
-    def __init__(self, client: Client, account_name: str, dry_run: bool = False):
+class ActionsBase:
+    """Action facade shared by twikit and Safe Relay clients."""
+
+    def __init__(self, client: Any, account_name: str, dry_run: bool = False):
         self.client = client
         self.account_name = account_name
         self.dry_run = dry_run
 
-    def _log(self, action: str, target_id: str, detail: str = ""):
+    def _log(self, action: str, target_id: str, detail: str = "") -> str:
         ts = datetime.now(tz=timezone.utc).isoformat()
         msg = f"[{ts}] [{self.account_name}] {action} | target={target_id}"
         if detail:
@@ -68,7 +70,7 @@ class TwikitActions:
             return False
 
     async def tweet(self, text: str) -> bool:
-        self._log("TWEET", "—", f"text={text!r}")
+        self._log("TWEET", "-", f"text={text!r}")
         if self.dry_run:
             return True
         try:
@@ -77,3 +79,37 @@ class TwikitActions:
         except Exception as e:
             logger.error("[%s] tweet failed: %s", self.account_name, e)
             return False
+
+
+TwikitActions = ActionsBase
+
+
+class SafeRelayActions(ActionsBase):
+    def __init__(
+        self,
+        account_name: str,
+        relay_profile: str | None = None,
+        dry_run: bool = False,
+        client: SafeRelayClient | None = None,
+    ):
+        profile_name = relay_profile or account_name
+        super().__init__(client or create_client_from_env(profile_name), account_name, dry_run)
+
+
+def create_actions(
+    client: Any,
+    account_name: str,
+    dry_run: bool = False,
+    relay_profile: str | None = None,
+) -> ActionsBase:
+    if isinstance(client, SafeRelayClient):
+        return SafeRelayActions(account_name, relay_profile, dry_run, client=client)
+    return TwikitActions(client, account_name, dry_run)
+
+
+def create_safe_relay_actions(
+    account_name: str,
+    dry_run: bool = False,
+    relay_profile: str | None = None,
+) -> SafeRelayActions:
+    return SafeRelayActions(account_name, relay_profile, dry_run)
